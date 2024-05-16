@@ -6,11 +6,17 @@ import matplotlib.pyplot as plt
 # Define physical parameters for the system
 k = 84  # Spring constant in N/m   (42)
 m = 1.9372e-6  # Mass of the object in kg
-y = np.sqrt(4 * m * k) / 1.5  # Damping coefficient in kg/s     (0.045101)   np.sqrt(4 * m * k)
+y = 0.0235  # Damping coefficient in kg/s     (0.045101) 0.0235
+
+
+peak_treshold = 14
+rest_treshold = 0.005
+search_depth = 100
 
 # Read in the position data from a text file, assuming whitespace delimiter remove or add the # to choose which position file to use
-data = pd.read_csv('Posities\posities_1_Team_07.txt', sep='\s+')    
-#data = pd.read_csv('Posities\posities_2_Team_07.txt', sep='\s+')   
+#data = pd.read_csv('Posities\posities_1_Team_07.txt', sep='\s+')    
+
+data = pd.read_csv('Posities\posities_2_Team_07.txt', sep='\s+')   
 
 # Calculate velocity by finite difference of position 'x' with respect to time 't'
 # Shift(1) moves the data down one row for subtraction, division by time interval gives velocity
@@ -39,16 +45,54 @@ for i in range(len(t)-1):
     # Update position using Euler's forward method: x = x0 + v*dt
     x[i+1] = x[i] + (t[i+1] - t[i]) * x_prime[i]    
 
-dt_peak =  '{:.2e}'.format(data['t'][x.argmax()] - data['t'][data['a (m/s^2)'].idxmax()])
+dydx_x = np.array([0])
+
+for i in range(len(x)-1):
+    derivative = abs((x[i+1] - x[i]) /  (data['t'][i+1] - data['t'][i]))
+    dydx_x = np.append(dydx_x, derivative)
+
+dydx_max = np.argmax(dydx_x)
+
+dydx_x = dydx_x / max(dydx_x)
 
 
+def is_valid_point(idx, lst, depth):
+    # Check if all points within 'depth' after 'idx' are below 'rest_treshold'
+    return all(value < rest_treshold for value in lst[idx:idx+depth])
+
+for i in range(len(dydx_x)):
+    
+    idx_offset = np.argmax(dydx_x) + i
+    
+    if is_valid_point(idx_offset, dydx_x, search_depth):
+        balance_x = idx_offset
+        break
+
+
+for i in range(len(data['a (m/s^2)'])):
+    if data['a (m/s^2)'][i] > peak_treshold:
+        peak_x = i
+        break
+
+dt_peaks = data['t'][balance_x] - data['t'][peak_x]
+
+print(dt_peaks)
+
+# plot both lines in one graph
 fig, ax1 = plt.subplots()
 
 ax2 = ax1.twinx()
 
+ax1.set_ylim(-1, 21.135)
+ax2.set_ylim(-0.233e-7, x[balance_x]+ 1.2e-7)
 
-ax1.plot(data['t'], data['a (m/s^2)'])
-ax2.plot(data['t'], x, color='orange')
+# do plots
+ax1.plot(data['t'], data['a (m/s^2)'], zorder=1)
+ax2.plot(data['t'], x, color='orange', zorder=2 , label='y: 0.002')
+
+plt.legend()
+
+plt.scatter(data['t'][balance_x], x[balance_x], color='gray', zorder=3)
 
 ax1.set_xlabel('Time (s)')
 ax1.set_ylabel('Real acceleration (m/s^2)', color='C0')
@@ -57,17 +101,3 @@ ax2.set_ylabel('Accleramoter acceleration (m/s^2)', color='orange')
 plt.savefig('Acceleration_vs_time.png', dpi=600)
 
 
-
-integral_real = 0
-integral_accelerometer = 0
-x_scale = data['a (m/s^2)'][data['a (m/s^2)'].idxmax()] / x[x.argmax()]
-
-for i in range(len(data['t'])-1):
-    integral_real += (data['t'][i+1] - data['t'][i]) * ((data['a (m/s^2)'][i] + data['a (m/s^2)'][i+1]) / 2)
-    integral_accelerometer += (data['t'][i+1] - data['t'][i]) * ((x[i] + x[i+1]) / 2) * x_scale
-
-accuracy = 100 - abs((integral_accelerometer - integral_real) / integral_real) * 100
-
-
-print('delta time peaks:', dt_peak, 's')
-print('accuracy:', round(accuracy, 2), "%")
