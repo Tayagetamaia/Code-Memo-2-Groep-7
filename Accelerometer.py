@@ -8,6 +8,18 @@ k = 84  # Spring constant in N/m   (42)
 m = 1.9372e-6  # Mass of the object in kg
 y = 0.0235  # Damping coefficient in kg/s     (0.045101) 0.0235
 
+epsilon_0 = 8.854e-12  # Permittivity of free space in F/m
+A = 1e-6  # Area of the capacitor plates in m^2
+d = 2e-6  # Initial distance between plates in meters
+V_s = 1e-6  # Voltage in volts
+
+def calculate_voltage(x):
+    C1 = epsilon_0 * A / (d - x)
+    C2 = epsilon_0 * A / (d + x)
+    V1 = -V_s * C1 / (C1 + C2)
+    V2 = V_s * C2 / (C1 + C2)
+    return V1 + V2
+
 
 peak_treshold = 14
 rest_treshold = 0.005
@@ -69,10 +81,34 @@ for i in range(len(dydx_x)):
         break
 
 
+
 for i in range(len(data['a (m/s^2)'])):
     if data['a (m/s^2)'][i] > peak_treshold:
         peak_x = i
         break
+
+
+real_volt_response = np.array([])
+
+for i in range(len(data['x'])):
+    real_volt_response = np.append(real_volt_response, calculate_voltage(data['x'][i]))
+
+
+integral_velocity = np.array([0])
+for i  in range(len(x)-1):
+    velocity_integral = (data['t'][i+1] - data['t'][i]) * ((x[i+1] + x[i]) / 2)
+    integral_velocity = np.append(integral_velocity, integral_velocity[-1] + velocity_integral)
+
+
+integral_position = np.array([0])
+for i in range(len(integral_velocity)-1):
+    position_integral = (data['t'][i+1] - data['t'][i]) * ((integral_velocity[i+1] + integral_velocity[i]) / 2)
+    integral_position = np.append(integral_position, integral_position[-1] + position_integral)
+
+accelerometer_volt_response = np.array([])
+for i in range(len(integral_position)):
+    accelerometer_volt_response = np.append(accelerometer_volt_response, calculate_voltage(integral_position[i]))
+
 
 dt_peaks = data['t'][balance_x] - data['t'][peak_x]
 
@@ -83,21 +119,21 @@ fig, ax1 = plt.subplots()
 
 ax2 = ax1.twinx()
 
-ax1.set_ylim(-1, 21.135)
-ax2.set_ylim(-0.233e-7, x[balance_x]+ 1.2e-7)
+# ax1.set_ylim(-1, 21.135)
+# ax2.set_ylim(-0.233e-7, x[balance_x]+ 1.2e-7)
 
 # do plots
-ax1.plot(data['t'], data['a (m/s^2)'], zorder=1)
-ax2.plot(data['t'], x, color='orange', zorder=2 , label='y: 0.002')
+ax1.plot(data['t'], real_volt_response, zorder=1)
+ax2.plot(data['t'], accelerometer_volt_response, color='orange', zorder=2 , label='y: 0.0235')
 
 plt.legend()
 
-plt.scatter(data['t'][balance_x], x[balance_x], color='gray', zorder=3)
+#plt.scatter(data['t'][balance_x], x[balance_x], color='gray', zorder=3)
 
 ax1.set_xlabel('Time (s)')
-ax1.set_ylabel('Real acceleration (m/s^2)', color='C0')
-ax2.set_ylabel('Accleramoter acceleration (m/s^2)', color='orange')
+ax1.set_ylabel('Real volt response (V)', color='C0')
+ax2.set_ylabel('Accleramoter volt response (V)', color='orange')
 
-plt.savefig('Acceleration_vs_time.png', dpi=600)
+plt.savefig('Volt_response.png', dpi=600)
 
 
